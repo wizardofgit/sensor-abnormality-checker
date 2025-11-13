@@ -1,0 +1,14 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Dashboard Home</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+  <h1>Welcome to Sensor Dashboard</h1>
+  <nav>
+    <a href="{{ url_for('sensors_page') }}">Live Map</a>
+    <a href="{{ url_for('charts_page') }}">Charts</a>
+  </nav>
+</body>
+</html>
