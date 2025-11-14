@@ -1,121 +1,139 @@
-const moteidSelect = document.getElementById('moteidSelect');
-const windowSelect = document.getElementById('windowSelect');
-const columnsSelect = document.getElementById('columnsSelect');
-const applyBtn = document.getElementById('applyFilters');
+let chartInstance = null;
+let updating = false;
 
-const ctx = document.getElementById('chart');
-let chart;
+// Stable color map (never changes)
+const colorMap = {
+    temperature: "rgb(255,99,132)",
+    humidity: "rgb(54,162,235)",
+    light: "rgb(255,205,86)",
+    voltage: "rgb(75,192,192)"
+};
 
-// Initialize chart
-function ensureChart(labels = [], seriesDict = {}) {
-  const datasets = Object.keys(seriesDict).map((col) => ({
-    label: col,
-    data: seriesDict[col],
-    borderWidth: 2,
-    tension: 0.2,
-    pointRadius: 0,
-  }));
+async function loadMoteList() {
+    const res = await fetch("/api/sensors/list");
+    const motes = await res.json();
 
-  if (chart) {
-    chart.data.labels = labels;
-    chart.data.datasets = datasets;
-    chart.update();
-    return chart;
-  }
+    const select = document.getElementById("moteSelect");
+    select.innerHTML = "";
 
-  chart = new Chart(ctx, {
-    type: 'line',
-    data: { labels, datasets },
-    options: {
-      animation: false,
-      responsive: true,
-      scales: {
-        x: {
-          title: { display: true, text: "Epoch #" },
-        },
-        y: {
-          beginAtZero: false,
-          title: { display: true, text: "Value" }
-        }
-      },
-      plugins: { legend: { position: 'bottom' } }
+    motes.forEach(m => {
+        const opt = document.createElement("option");
+        opt.value = m;
+        opt.textContent = "Mote " + m;
+        select.appendChild(opt);
+    });
+
+    if (motes.length > 0) {
+        select.value = motes[0];
     }
-  });
-  return chart;
 }
 
-// Populate moteid list
-async function loadMoteIds() {
-  const res = await fetch('/api/sensors/list');
-  const ids = await res.json();
-  moteidSelect.innerHTML = '';
-  ids.forEach(id => {
-    const opt = document.createElement('option');
-    opt.value = id;
-    opt.textContent = id;
-    moteidSelect.appendChild(opt);
-  });
+async function fetchSeries(moteid, columns, resolution) {
+    const colStr = columns.join(",");
+    const url = `/api/sensors/${moteid}/series?cols=${colStr}&res=${resolution}`;
+
+    const res = await fetch(url);
+    return await res.json();
 }
 
-// Default chart columns
-const ALL_COLS = ['temperature', 'humidity', 'light', 'voltage'];
+function buildDatasets(seriesData, columns) {
+    const timestamps = seriesData.timestamps;
+    const series = seriesData.series;
 
-function setDefaultColumns() {
-  columnsSelect.innerHTML = '';
-  ALL_COLS.forEach(col => {
-    const opt = document.createElement('option');
-    opt.value = col;
-    opt.textContent = col;
-    columnsSelect.appendChild(opt);
-  });
-  // Default = temperature selected
-  [...columnsSelect.options].forEach(o => {
-    o.selected = (o.value === 'temperature');
-  });
+    const datasets = [];
+
+    columns.forEach(col => {
+        const yVals = series[col];
+
+        const points = timestamps.map((ts, i) => ({
+            x: ts * 1000,   // seconds → ms for Chart.js time scale
+            y: yVals[i] ?? null,
+        }));
+
+        datasets.push({
+            label: col,
+            data: points,
+            borderColor: colorMap[col],
+            backgroundColor: "transparent",
+            borderWidth: 2,
+            pointRadius: 0,
+            tension: 0.2
+        });
+    });
+
+    return datasets;
 }
 
-// Selected columns helper
-function getSelectedColumns() {
-  return [...columnsSelect.selectedOptions].map(o => o.value);
+function createChart(datasets) {
+    const ctx = document.getElementById("chart").getContext("2d");
+
+    chartInstance = new Chart(ctx, {
+        type: "line",
+        data: { datasets },
+        options: {
+            responsive: true,
+            animation: false,
+            parsing: false,
+            scales: {
+                x: {
+                    type: "time",
+                    time: {
+                        unit: "minute",
+                        tooltipFormat: "yyyy-MM-dd HH:mm:ss",
+                        displayFormats: {
+                            millisecond: "yyyy-MM-dd HH:mm:ss",
+                            second: "yyyy-MM-dd HH:mm:ss",
+                            minute: "yyyy-MM-dd HH:mm",
+                            hour: "yyyy-MM-dd HH:mm",
+                            day: "yyyy-MM-dd",
+                        }
+                    }
+                }
+            }
+        }
+    });
+
+    chartInstance.update('none');
 }
 
-async function fetchSeries() {
-  const moteid = moteidSelect.value;
-  const windowVal = windowSelect.value;
-  const cols = getSelectedColumns();
-
-  if (!moteid || cols.length === 0) return;
-
-  const params = new URLSearchParams({
-    window: windowVal,
-    cols: cols.join(','),
-  });
-
-  const res = await fetch(`/api/sensors/${moteid}/series?` + params.toString());
-  if (!res.ok) return;
-
-  // { epochs: [...], series: { temperature:[], humidity:[], ... } }
-  const payload = await res.json();
-  const epochs = payload.epochs;
-  const series = payload.series;
-
-  ensureChart(epochs, series);
+function updateChartData(datasets) {
+    chartInstance.data.datasets = datasets;
+    chartInstance.update('none');
 }
 
-// Polling
-let pollHandle = null;
+async function updateChart() {
+    if (updating) return;  // prevent overlapping refreshes
+    updating = true;
 
-function startPolling() {
-  if (pollHandle) clearInterval(pollHandle);
-  pollHandle = setInterval(fetchSeries, 2000);
+    const moteid = document.getElementById("moteSelect").value;
+
+    const selectedColumns = Array.from(
+        document.getElementById("columnSelect").selectedOptions
+    ).map(opt => opt.value);
+
+    const resolution = document.getElementById("resolutionSelect").value;
+
+    const seriesData = await fetchSeries(moteid, selectedColumns, resolution);
+
+    const datasets = buildDatasets(seriesData, selectedColumns);
+
+    if (!chartInstance) {
+        createChart(datasets);
+    } else {
+        updateChartData(datasets);
+    }
+
+    updating = false;
 }
 
-applyBtn.addEventListener('click', fetchSeries);
+document.addEventListener("DOMContentLoaded", async () => {
+    await loadMoteList();
+    await updateChart();
 
-// Init
-(async function init() {
-  await loadMoteIds();
-  setDefaultColumns();
-  await fetchSeries();
-  startPolling();
-})();
+    document.getElementById("refreshBtn").addEventListener("click", updateChart);
+
+    // smooth auto-refresh
+    setTimeout(() => {
+        setInterval(updateChart, 5000);
+    }, 1000);
+});

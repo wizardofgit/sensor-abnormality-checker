@@ -1,96 +1,109 @@
-from time import sleep, time
+from time import sleep
+import time
 import pandas as pd
 from queue import Queue
 from threading import Thread
 import flask
 from flask import render_template, jsonify, request
+import csv
 
-try:
-    assert open("data.csv")
-except FileNotFoundError:
-    print("The file 'data.csv' was not found.")
-except:
-    print("An unexpected error occurred while trying to open the file.")
+mote_coords = {}
+with open("loc.csv", newline="") as f:
+    reader = csv.DictReader(f)
+    for row in reader:
+        moteid = int(row["moteid"])
+        lat = float(row["lat"])
+        lon = float(row["lon"])
+        mote_coords[moteid] = (lat, lon)
 
-columns = ['date', 'time', 'epoch', 'moteid', 'temperature', 'humidity', 'light', 'voltage']
+default_latlon = (51.1079, 17.0385)
+
+columns = ['date', 'time', 'epoch', 'moteid',
+           'temperature', 'humidity', 'light', 'voltage']
+
 data = pd.read_csv("data.csv", names=columns, header=None, sep=' ')
 
-# create global queue
+# Combine date+time into datetime
+data["datetime"] = pd.to_datetime(
+    data["date"] + " " + data["time"],
+    errors="coerce"
+)
+
+# Drop unparseable rows
+data = data.dropna(subset=["datetime"])
+
+# Sort chronologically
+data = data.sort_values("datetime").reset_index(drop=True)
+
 data_queue = Queue()
+sensors = {}       # last known status per mote
+sensor_data = {}   # historical series per mote
 
-# create thread to add to queue
-def add_to_queue(data, queue, batch_size=1000, tick_delay=1.0, loop=False):
-    """
-    Push data to queue in batches of `batch_size`.
-    after each batch, wait `tick_delay` seconds.
-    """
+
+def add_to_queue(data, queue, batch_size=1000, tick_delay=1.0, loop=True):
     n = len(data)
-
     while True:
         for start in range(0, n, batch_size):
-            batch = data.iloc[start:start+batch_size]
-
+            batch = data.iloc[start:start + batch_size]
             for _, row in batch.iterrows():
                 queue.put(row)
-
-            # One tick ends here
             sleep(tick_delay)
-
         if not loop:
             break
 
-queue_thread = Thread(
-    target=add_to_queue,
-    args=(data, data_queue),
-    kwargs={"batch_size": 1000, "tick_delay": 1.0, "loop": True},
-    daemon=True
-).start()
+Thread(target=add_to_queue, args=(data, data_queue), daemon=True).start()
 
-# create thread to process data from queue
-sensors = {}
-sensor_data = {}
-def process_queue(queue, sensors):
+
+def process_queue(queue):
     while True:
-        if not queue.empty():
-            row = queue.get()
+        if queue.empty():
+            sleep(0.05)
+            continue
 
-            moteid = int(row['moteid'])
-            now_epoch = time()
+        row = queue.get()
+        try:
+            moteid = int(row["moteid"])
+        except ValueError:
+            continue
+        now_ts = time.time()
 
-            sensors[moteid] = {
-                'last_date': row['date'],
-                'last_time': row['time'],
-                'last_temperature': float(row['temperature']),
-                'last_light': float(row['light']),
-                'last_humidity': float(row['humidity']),
-                'last_voltage': float(row['voltage']),
-                'last_seen_epoch': now_epoch,
-                # Optional: if you have coordinates per sensor, add them here
-                'lat': row.get('lat', None),
-                'lon': row.get('lon', None),
+        # Coordinates
+        lat, lon = mote_coords.get(moteid, default_latlon)
+
+        # Update latest status
+        sensors[moteid] = {
+            "moteid": moteid,
+            "last_temperature": float(row["temperature"]),
+            "last_humidity": float(row["humidity"]),
+            "last_light": float(row["light"]),
+            "last_voltage": float(row["voltage"]),
+            "last_seen_epoch": now_ts,
+            "lat": lat,
+            "lon": lon,
+        }
+
+        # Init per-sensor buffer
+        if moteid not in sensor_data:
+            sensor_data[moteid] = {
+                "timestamp": [],
+                "temperature": [],
+                "humidity": [],
+                "light": [],
+                "voltage": [],
             }
 
-            if moteid not in sensor_data:
-                sensor_data[moteid] = {
-                    'epoch': [],
-                    'temperature': [],
-                    'light': [],
-                    'humidity': [],
-                    'voltage': [],
-                }
+        # Append values
+        ts = row["datetime"].timestamp()
 
-            sensor_data[moteid]['epoch'].append(now_epoch)
-            sensor_data[moteid]['temperature'].append(float(row['temperature']))
-            sensor_data[moteid]['light'].append(float(row['light']))
-            sensor_data[moteid]['humidity'].append(float(row['humidity']))
-            sensor_data[moteid]['voltage'].append(float(row['voltage']))
+        sensor_data[moteid]["timestamp"].append(ts)
+        sensor_data[moteid]["temperature"].append(float(row["temperature"]))
+        sensor_data[moteid]["humidity"].append(float(row["humidity"]))
+        sensor_data[moteid]["light"].append(float(row["light"]))
+        sensor_data[moteid]["voltage"].append(float(row["voltage"]))
 
-        else:
-            sleep(0.05)
+Thread(target=process_queue, args=(data_queue,), daemon=True).start()
 
-sensors_thread = Thread(target=process_queue, args=(data_queue, sensors)).start()
 
-# create flask app to serve data from queue
 app = flask.Flask(__name__)
 
 @app.route("/")
@@ -106,68 +119,68 @@ def charts_page():
     return render_template("charts.html")
 
 @app.route("/api/sensors/list")
-def api_list_sensors():
+def api_sensor_list():
     return jsonify(sorted(list(sensors.keys())))
 
-# ---- API: status for map (green/red via last_seen_epoch) ----
 @app.route("/api/sensors/status")
-def api_sensors_status():
-    # Choose which metric to show inside the circle (here: temperature)
+def api_sensor_status():
     payload = []
+
     for moteid, s in sensors.items():
-        payload.append({
-            "moteid": moteid,
-            "lat": s.get("lat"),     # provide coords if you have them
-            "lon": s.get("lon"),
-            "last_seen_epoch": s.get("last_seen_epoch"),
-            "last_temperature": s.get("last_temperature"),
-            "last_humidity": s.get("last_humidity"),
-            "last_light": s.get("last_light"),
-            "last_voltage": s.get("last_voltage"),
-            "last_value": s.get("last_temperature"),
-        })
+        # Convert NaN → None
+        fixed = {k: (None if isinstance(v, float) and pd.isna(v) else v)
+                 for k, v in s.items()}
+
+        payload.append(fixed)
+
     return jsonify(payload)
 
-# ---- API: time series with filters ----
 @app.route("/api/sensors/<int:moteid>/series")
 def api_sensor_series(moteid):
-    window = request.args.get("window", "15m")
-    cols = request.args.get("cols", "temperature").split(",")
+    """Return aligned time-series data for one sensor."""
 
     if moteid not in sensor_data:
-        return jsonify({"timestamps": [], "series": {c: [] for c in cols}})
+        return jsonify({"timestamps": [], "series": {}})
 
-    # Parse window
-    seconds = 900
-    try:
-        if window.endswith('m'):
-            seconds = int(window[:-1]) * 60
-        elif window.endswith('h'):
-            seconds = int(window[:-1]) * 3600
-        elif window.endswith('d'):
-            seconds = int(window[:-1]) * 86400
-    except:
-        pass
+    cols = request.args.get("cols", "temperature").split(",")
+    resolution = request.args.get("res", "raw")
 
-    now = time()
-    epochs = sensor_data[moteid]['epoch']
-    start_idx = 0
-    # Find first index within window
-    for i in range(len(epochs) - 1, -1, -1):
-        if now - epochs[i] <= seconds:
-            start_idx = i
-        else:
-            break
+    # Build DataFrame with unified timestamp index
+    df = pd.DataFrame({
+        "ts": pd.to_datetime(sensor_data[moteid]["timestamp"], unit="s")
+    }).set_index("ts")
 
-    timestamps = epochs[start_idx:]
+    # Add columns
+    for col in cols:
+        df[col] = sensor_data[moteid][col]
+
+    # Resample all columns TOGETHER
+    if resolution == "raw":
+        df_res = df.copy()
+    elif resolution == "min":
+        df_res = df.resample("1min").mean()
+    elif resolution == "hour":
+        df_res = df.resample("1h").mean()
+    else:
+        df_res = df.copy()
+
+    # Drop rows with missing values
+    df_res = df_res.dropna(how="any")
+
+    # Extract timestamps + aligned series
+    timestamps = df_res.index.astype(int) // 10 ** 9
+
     series = {}
-    for c in cols:
-        if c not in sensor_data[moteid]:
-            series[c] = []
-        else:
-            series[c] = sensor_data[moteid][c][start_idx:]
+    for col in cols:
+        values = df_res[col].tolist()
+        # convert NaN → None
+        values = [None if (isinstance(v, float) and pd.isna(v)) else v for v in values]
+        series[col] = values
 
-    return jsonify({"timestamps": timestamps, "series": series})
+    return jsonify({
+        "timestamps": timestamps.tolist(),
+        "series": series
+    })
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000, debug=True, threaded=True)
