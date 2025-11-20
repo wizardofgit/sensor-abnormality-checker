@@ -5,34 +5,51 @@ document.addEventListener("DOMContentLoaded", async () => {
     const activeEl = document.getElementById("active-sensors");
     const avgTempEl = document.getElementById("avg-temp");
 
-    try {
-        const res = await fetch("/api/sensors/status");
-        const data = await res.json();
+    async function updateStats(silent = false) {
+        if (!silent) {
+            loadingEl.style.display = "flex";
+            contentEl.style.display = "none";
+        }
 
-        // Calculate stats
-        const totalSensors = data.length;
+        try {
+            const res = await fetch("/api/sensors/status");
+            const data = await res.json();
 
-        // Consider active if seen in the last 60 seconds (matching map logic)
-        const now = Date.now() / 1000;
-        const activeSensors = data.filter(s => s.last_seen_epoch && (now - s.last_seen_epoch) < 60).length;
+            // Calculate stats
+            const totalSensors = data.length;
 
-        // Calculate average temperature
-        const validTemps = data.map(s => s.last_temperature).filter(t => t !== null && t !== undefined);
-        const avgTemp = validTemps.length > 0
-            ? (validTemps.reduce((a, b) => a + b, 0) / validTemps.length).toFixed(1) + "°C"
-            : "N/A";
+            // Consider active if seen in the last 60 seconds (matching map logic)
+            const now = Date.now() / 1000;
+            const activeSensors = data.filter(s => s.last_seen_epoch && (now - s.last_seen_epoch) < 60).length;
 
-        // Update UI
-        totalEl.textContent = totalSensors;
-        activeEl.textContent = activeSensors;
-        avgTempEl.textContent = avgTemp;
+            // Calculate average temperature
+            const validTemps = data.map(s => s.last_temperature).filter(t => t !== null && t !== undefined);
+            const avgTemp = validTemps.length > 0
+                ? (validTemps.reduce((a, b) => a + b, 0) / validTemps.length).toFixed(1) + "°C"
+                : "N/A";
 
-        loadingEl.style.display = "none";
-        contentEl.style.display = "grid";
+            // Update UI
+            totalEl.textContent = totalSensors;
+            activeEl.textContent = activeSensors;
+            avgTempEl.textContent = avgTemp;
 
-    } catch (e) {
-        console.error("Failed to load system stats:", e);
-        loadingEl.textContent = "Failed to load system status.";
-        loadingEl.style.color = "red";
+            if (!silent) {
+                loadingEl.style.display = "none";
+                contentEl.style.display = "grid";
+            }
+
+        } catch (e) {
+            console.error("Failed to load system stats:", e);
+            if (!silent) {
+                loadingEl.textContent = "Failed to load system status.";
+                loadingEl.style.color = "red";
+            }
+        }
     }
+
+    // Initial load
+    await updateStats(false);
+
+    // Auto-refresh every 2 seconds
+    setInterval(() => updateStats(true), 2000);
 });

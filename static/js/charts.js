@@ -122,7 +122,36 @@ function createChart(datasets, columns) {
                 }
             },
             title: { display: true, text: 'Time' },
-            grid: { color: '#e2e8f0' }
+            grid: { color: '#e2e8f0' },
+            ticks: {
+                maxRotation: 0,
+                autoSkip: true,
+                callback: function (val, index, ticks) {
+                    // Get the timestamp for this tick
+                    const tickDate = new Date(this.getLabelForValue(val));
+                    const tickTime = tickDate.getHours() + ':' + String(tickDate.getMinutes()).padStart(2, '0');
+
+                    // Always show time
+                    let label = tickTime;
+
+                    // Show date if it's the first tick or if the day changed from the previous tick
+                    if (index === 0) {
+                        const dateStr = tickDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+                        return [dateStr, label]; // Multiline label
+                    } else {
+                        // Use the 'ticks' array passed to the callback
+                        if (index > 0 && ticks[index - 1]) {
+                            const prevVal = ticks[index - 1].value;
+                            const prevDate = new Date(prevVal);
+                            if (prevDate.getDate() !== tickDate.getDate()) {
+                                const dateStr = tickDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+                                return [dateStr, label];
+                            }
+                        }
+                    }
+                    return label;
+                }
+            }
         }
     };
 
