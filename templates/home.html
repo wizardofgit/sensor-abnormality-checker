@@ -1,14 +1,254 @@
 <!DOCTYPE html>
-<html>
-<head>
-    <title>Dashboard Home</title>
-</head>
-<body style="font-family:sans-serif;">
-    <h1>Sensor Dashboard</h1>
+<html lang="en">
 
-    <ul>
-        <li><a href="/sensors">Live Sensors Map</a></li>
-        <li><a href="/charts">Charts</a></li>
-    </ul>
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard Home</title>
+
+    <!-- Google Fonts: Inter -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+
+    <style>
+        :root {
+            --bg-color: #f8f9fa;
+            --card-bg: #ffffff;
+            --text-primary: #2d3748;
+            --text-secondary: #718096;
+            --accent-color: #3182ce;
+            --success-color: #48bb78;
+            --border-color: #e2e8f0;
+            --shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+            --hover-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+        }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-primary);
+            margin: 0;
+            padding: 40px 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            min-height: 100vh;
+        }
+
+        .container {
+            width: 100%;
+            max-width: 1000px;
+        }
+
+        header {
+            margin-bottom: 40px;
+            text-align: center;
+        }
+
+        h1 {
+            font-weight: 700;
+            font-size: 2.5rem;
+            color: var(--text-primary);
+            margin: 0 0 10px 0;
+            letter-spacing: -0.02em;
+        }
+
+        p.subtitle {
+            color: var(--text-secondary);
+            font-size: 1.1rem;
+            margin: 0;
+        }
+
+        .section-header {
+            width: 100%;
+            max-width: 1000px;
+            margin-top: 40px;
+            margin-bottom: 20px;
+            text-align: left;
+        }
+
+        .section-header h2 {
+            font-size: 1.2rem;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            font-weight: 600;
+            margin: 0;
+        }
+
+        .overview-card {
+            width: 100%;
+            margin-bottom: 40px;
+            box-sizing: border-box;
+        }
+
+        .nav-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 24px;
+            width: 100%;
+        }
+
+        .nav-link {
+            text-decoration: none;
+            display: block;
+            height: 100%;
+        }
+
+        .card {
+            background: var(--card-bg);
+            padding: 30px;
+            border-radius: 16px;
+            box-shadow: var(--shadow);
+            transition: transform 0.2s, box-shadow 0.2s;
+            border: 1px solid var(--border-color);
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            height: 100%;
+            box-sizing: border-box;
+        }
+
+        .card:hover {
+            transform: translateY(-4px);
+            box-shadow: var(--hover-shadow);
+        }
+
+        .card-title {
+            font-size: 1.25rem;
+            font-weight: 600;
+            margin: 0 0 15px 0;
+            color: var(--text-primary);
+        }
+
+        .card-content {
+            color: var(--text-secondary);
+            font-size: 0.95rem;
+            line-height: 1.5;
+            margin-bottom: 20px;
+        }
+
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            background-color: var(--accent-color);
+            color: white;
+            text-decoration: none;
+            padding: 12px 24px;
+            border-radius: 8px;
+            font-weight: 500;
+            transition: background-color 0.2s;
+            align-self: flex-start;
+        }
+
+        .btn:hover {
+            background-color: #2c5282;
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 20px;
+        }
+
+        @media (max-width: 600px) {
+            .stats-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        .stat-item {
+            text-align: center;
+            padding: 20px;
+            background-color: #f7fafc;
+            border-radius: 12px;
+            border: 1px solid var(--border-color);
+        }
+
+        .stat-value {
+            display: block;
+            font-size: 1.8rem;
+            font-weight: 700;
+            color: var(--accent-color);
+            margin-bottom: 5px;
+        }
+
+        .stat-label {
+            font-size: 0.85rem;
+            color: var(--text-secondary);
+            font-weight: 500;
+        }
+
+        #loading-stats {
+            text-align: center;
+            color: var(--text-secondary);
+            padding: 20px;
+        }
+    </style>
+</head>
+
+<body>
+
+    <div class="container">
+        <header>
+            <h1>Sensor Dashboard</h1>
+            <p class="subtitle">Real-time monitoring and anomaly detection system</p>
+        </header>
+
+        <!-- System Overview Section -->
+        <div class="section-header">
+            <h2>System Status</h2>
+        </div>
+        <div class="overview-card card">
+            <div id="loading-stats">Loading system status...</div>
+            <div id="stats-content" class="stats-grid" style="display: none;">
+                <div class="stat-item">
+                    <span class="stat-value" id="total-sensors">-</span>
+                    <span class="stat-label">Total Sensors</span>
+                </div>
+                <div class="stat-item">
+                    <span class="stat-value" id="active-sensors">-</span>
+                    <span class="stat-label">Active Now</span>
+                </div>
+                <div class="stat-item">
+                    <span class="stat-value" id="avg-temp">-</span>
+                    <span class="stat-label">Avg Temp</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Navigation Section -->
+        <div class="section-header">
+            <h2>Quick Actions</h2>
+        </div>
+        <div class="nav-grid">
+            <a href="/sensors" class="nav-link">
+                <div class="card">
+                    <div>
+                        <h3 class="card-title">Live Map</h3>
+                        <p class="card-content">View the real-time geographical distribution of sensors and their
+                            current status on an interactive map.</p>
+                    </div>
+                    <span class="btn">Open Map &rarr;</span>
+                </div>
+            </a>
+
+            <a href="/charts" class="nav-link">
+                <div class="card">
+                    <div>
+                        <h3 class="card-title">Data Charts</h3>
+                        <p class="card-content">Analyze historical sensor data with interactive charts. Visualize
+                            temperature, humidity, light, and voltage trends.</p>
+                    </div>
+                    <span class="btn">View Charts &rarr;</span>
+                </div>
+            </a>
+        </div>
+    </div>
+
+    <script src="{{ url_for('static', filename='js/home.js') }}"></script>
 </body>
+
 </html>

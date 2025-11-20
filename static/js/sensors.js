@@ -29,7 +29,7 @@ function markerHtml(sensor) {
       width: 54px; height: 54px;
       display:flex; flex-direction:column; align-items:center; justify-content:center;
       border-radius: 9999px; background:${bg}; color: #fff; border: 2px solid ${border};
-      font-family: system-ui, sans-serif; font-size: 11px; line-height:1.1; text-align:center;
+      font-family: 'Inter', sans-serif; font-size: 11px; line-height:1.1; text-align:center;
       box-shadow: 0 1px 6px rgba(0,0,0,.25);
     ">
       <div style="font-weight:700;">${id}</div>
@@ -41,7 +41,7 @@ function markerHtml(sensor) {
 function popupHtml(s) {
   const staleStr = isStale(s.last_seen_epoch) ? '❌ stale (>60s)' : '✅ live';
   return `
-    <div style="font-family:system-ui,sans-serif;font-size:13px;">
+    <div style="font-family:'Inter',sans-serif;font-size:13px;">
       <div><strong>Sensor:</strong> ${s.moteid}</div>
       <div><strong>Status:</strong> ${staleStr}</div>
       <div><strong>Last update:</strong> ${new Date(s.last_seen_epoch * 1000).toLocaleTimeString()}</div>
