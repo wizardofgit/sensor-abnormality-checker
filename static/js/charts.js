@@ -128,7 +128,7 @@ function createChart(datasets, columns) {
                 autoSkip: true,
                 callback: function (val, index, ticks) {
                     // Get the timestamp for this tick
-                    const tickDate = new Date(this.getLabelForValue(val));
+                    const tickDate = new Date(val);
                     const tickTime = tickDate.getHours() + ':' + String(tickDate.getMinutes()).padStart(2, '0');
 
                     // Always show time
