@@ -48,3 +48,63 @@ async function fetchAndRender() {
 // Poll every 2 seconds
 setInterval(fetchAndRender, 2000);
 fetchAndRender();
+
+// --- Configuration Logic ---
+
+const modal = document.getElementById('config-modal');
+
+function openConfig() {
+    modal.classList.add('open');
+    loadConfig();
+}
+
+function closeConfig() {
+    modal.classList.remove('open');
+}
+
+// Close if clicked outside
+window.onclick = function (event) {
+    if (event.target == modal) {
+        closeConfig();
+    }
+}
+
+async function loadConfig() {
+    try {
+        const res = await fetch('/api/alerts/config');
+        const settings = await res.json();
+
+        // Populate checkboxes
+        for (const [key, enabled] of Object.entries(settings)) {
+            const el = document.getElementById(`cfg-${key}`);
+            if (el) el.checked = enabled;
+        }
+    } catch (e) {
+        console.error("Failed to load config", e);
+    }
+}
+
+async function saveConfig() {
+    const settings = {
+        "offline": document.getElementById('cfg-offline').checked,
+        "incomplete": document.getElementById('cfg-incomplete').checked,
+        "outlier_temperature": document.getElementById('cfg-outlier_temperature').checked,
+        "outlier_humidity": document.getElementById('cfg-outlier_humidity').checked,
+        "outlier_light": document.getElementById('cfg-outlier_light').checked,
+        "outlier_voltage": document.getElementById('cfg-outlier_voltage').checked,
+    };
+
+    try {
+        await fetch('/api/alerts/config', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(settings)
+        });
+        closeConfig();
+        // Refresh alerts immediately to reflect changes (e.g. if we turned off a type)
+        fetchAndRender();
+    } catch (e) {
+        console.error("Failed to save config", e);
+        alert("Failed to save settings");
+    }
+}

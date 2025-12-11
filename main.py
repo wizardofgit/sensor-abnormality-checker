@@ -193,6 +193,16 @@ alerts = []  # Public list of alerts
 active_alerts = {}  # Internal state: (moteid, type) -> alert_dict
 alert_history = {}  # (moteid, type) -> last_trigger_timestamp
 
+# Configurable Alert Settings
+alert_settings = {
+    "offline": True,
+    "incomplete": True,
+    "outlier_temperature": True,
+    "outlier_humidity": True,
+    "outlier_light": False,  # Default OFF per requirement
+    "outlier_voltage": True
+}
+
 def check_alerts():
     """
     Re-scan sensors for anomalies.
@@ -217,6 +227,11 @@ def check_alerts():
                 "critical"
             ))
 
+        # Filter by settings
+        if not alert_settings.get("offline", True):
+            if current_anomalies and current_anomalies[-1][1] == "offline":
+               current_anomalies.pop()
+
         # B) Incomplete data check
         required_keys = ["last_temperature", "last_humidity", "last_light", "last_voltage"]
         # Check for None OR NaN
@@ -233,6 +248,11 @@ def check_alerts():
                 f"Sensor {moteid} has incomplete data: {', '.join(missing)}", 
                 "warning"
             ))
+
+        # Filter by settings
+        if not alert_settings.get("incomplete", True):
+            if current_anomalies and current_anomalies[-1][1] == "incomplete":
+               current_anomalies.pop()
 
         # C) Outlier check (Robust Z-Score)
         if moteid in sensor_data:
@@ -269,6 +289,12 @@ def check_alerts():
                         f"Sensor {moteid} {field} outlier: {current:.2f} (mean={mean:.2f}, std={std:.2f})", 
                         "warning"
                     ))
+
+                # Filter immediately
+                if current_anomalies and current_anomalies[-1][1].startswith("outlier"):
+                   t = current_anomalies[-1][1] # e.g. outlier_temperature
+                   if not alert_settings.get(t, True):
+                       current_anomalies.pop()
 
     # 2. Update active_alerts
     updated_keys = set()
@@ -340,6 +366,19 @@ def alerts_page():
 @app.route("/api/alerts")
 def api_alerts():
     return jsonify(alerts)
+
+@app.route("/api/alerts/config", methods=["GET", "POST"])
+def api_alerts_config():
+    global alert_settings
+    if request.method == "POST":
+        new_settings = request.json
+        # Merge safely
+        for k, v in new_settings.items():
+            if k in alert_settings:
+                alert_settings[k] = bool(v)
+        return jsonify(alert_settings)
+    else:
+        return jsonify(alert_settings)
 
 
 if __name__ == "__main__":
