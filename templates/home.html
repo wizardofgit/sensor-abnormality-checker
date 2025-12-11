@@ -245,9 +245,21 @@
                     <span class="btn">View Charts &rarr;</span>
                 </div>
             </a>
+
+            <a href="/alerts" class="nav-link">
+                <div class="card">
+                    <div>
+                        <h3 class="card-title">System Alerts</h3>
+                        <p class="card-content">Monitor critical errors and warnings. View real-time status of all
+                            sensors.</p>
+                    </div>
+                    <span class="btn">View Alerts &rarr;</span>
+                </div>
+            </a>
         </div>
     </div>
 
+    <script src="{{ url_for('static', filename='js/notifications.js') }}"></script>
     <script src="{{ url_for('static', filename='js/home.js') }}"></script>
 </body>
 

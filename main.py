@@ -161,11 +161,15 @@ def api_sensor_series(moteid):
         df_res = df.resample("1min").mean()
     elif resolution == "hour":
         df_res = df.resample("1h").mean()
+    elif resolution == "day":
+        df_res = df.resample("1D").mean()
     else:
         df_res = df.copy()
 
-    # Drop rows with missing values
-    df_res = df_res.dropna(how="any")
+    # Drop rows only if ALL requested columns are NaN
+    # This allows partial data to be plotted (Chart.js handles nulls)
+    # df_res = df_res.dropna(how="all", subset=cols)
+    # COMMENTED OUT to ensure we send data even if it looks empty (debugging)
 
     # Extract timestamps + aligned series
     timestamps = df_res.index.astype(int) // 10 ** 9
@@ -181,6 +185,162 @@ def api_sensor_series(moteid):
         "timestamps": timestamps.tolist(),
         "series": series
     })
+
+
+# --- Alert System ---
+
+alerts = []  # Public list of alerts
+active_alerts = {}  # Internal state: (moteid, type) -> alert_dict
+alert_history = {}  # (moteid, type) -> last_trigger_timestamp
+
+def check_alerts():
+    """
+    Re-scan sensors for anomalies.
+    - Critical: Offline (>60s), Sensor Error (missing keys or NaN)
+    - Warning: Outlier data (>3 std dev)
+    """
+    global alerts, active_alerts, alert_history
+    now = time.time()
+    
+    # 1. Detect current anomalies
+    current_anomalies = [] # list of (moteid, type, msg, level)
+
+    # Check each sensor
+    for moteid, status in sensors.items():
+        # A) Offline check
+        last_seen = status.get("last_seen_epoch", 0)
+        if now - last_seen > 60:
+            current_anomalies.append((
+                moteid, 
+                "offline", 
+                f"Sensor {moteid} is offline (last seen {int(now - last_seen)}s ago)", 
+                "critical"
+            ))
+
+        # B) Incomplete data check
+        required_keys = ["last_temperature", "last_humidity", "last_light", "last_voltage"]
+        # Check for None OR NaN
+        missing = []
+        for k in required_keys:
+            val = status.get(k)
+            if val is None or (isinstance(val, float) and pd.isna(val)):
+                missing.append(k)
+        
+        if missing:
+            current_anomalies.append((
+                moteid, 
+                "incomplete", 
+                f"Sensor {moteid} has incomplete data: {', '.join(missing)}", 
+                "warning"
+            ))
+
+        # C) Outlier check (Robust Z-Score)
+        if moteid in sensor_data:
+            window = 20
+            # Minimum difference thresholds to avoid false positives on stable signals
+            min_diffs = {
+                "temperature": 2.0,
+                "humidity": 5.0,
+                "light": 50.0,
+                "voltage": 0.2
+            }
+            
+            for field in ["temperature", "humidity", "light", "voltage"]:
+                vals = sensor_data[moteid][field]
+                if len(vals) < 5:
+                    continue
+                
+                recent = vals[-window:]
+                series = pd.Series(recent)
+                mean = series.mean()
+                std = series.std()
+                
+                if pd.isna(std) or std == 0:
+                    continue
+                
+                current = vals[-1]
+                diff = abs(current - mean)
+                
+                # Condition: > 3 sigma AND > min_diff
+                if diff > 3 * std and diff > min_diffs.get(field, 0):
+                    current_anomalies.append((
+                        moteid, 
+                        f"outlier_{field}", 
+                        f"Sensor {moteid} {field} outlier: {current:.2f} (mean={mean:.2f}, std={std:.2f})", 
+                        "warning"
+                    ))
+
+    # 2. Update active_alerts
+    updated_keys = set()
+
+    for moteid, type_, msg, level in current_anomalies:
+        key = (moteid, type_)
+        updated_keys.add(key)
+        
+        # Expiry duration: 
+        # State alerts (offline/incomplete) expire quickly if not re-detected (e.g. 2.5s)
+        # Event alerts (outlier) persist longer (e.g. 60s) so they can be seen
+        is_event = "outlier" in type_
+        expiry_duration = 60 if is_event else 2.5
+        
+        if key in active_alerts:
+            # Update existing
+            active_alerts[key]["msg"] = msg
+            active_alerts[key]["expires"] = now + expiry_duration
+            # Keep original timestamp for stability
+        else:
+            # New alert logic with cooldown
+            # Check history
+            last_trigger = alert_history.get(key, 0)
+            
+            # If triggered recently (< 30s), reuse the old timestamp (suppress popup)
+            # Otherwise, use 'now' (trigger popup)
+            if now - last_trigger < 30:
+                ts = last_trigger
+            else:
+                ts = now
+                alert_history[key] = now
+
+            active_alerts[key] = {
+                "level": level,
+                "moteid": moteid,
+                "type": type_,
+                "msg": msg,
+                "timestamp": ts,
+                "expires": now + expiry_duration
+            }
+
+    # 3. Cleanup expired alerts
+    to_remove = []
+    for k, v in active_alerts.items():
+        if now > v["expires"]:
+            to_remove.append(k)
+            
+    for k in to_remove:
+        del active_alerts[k]
+
+    # 4. Publish to global list
+    # Sort by timestamp ASC (oldest first)
+    alerts = sorted(list(active_alerts.values()), key=lambda x: x["timestamp"])
+
+def background_alert_checker():
+    while True:
+        try:
+            check_alerts()
+        except Exception as e:
+            print(f"Error in alert checker: {e}")
+        sleep(2.0)
+
+Thread(target=background_alert_checker, daemon=True).start()
+
+@app.route("/alerts")
+def alerts_page():
+    return render_template("alerts.html")
+
+@app.route("/api/alerts")
+def api_alerts():
+    return jsonify(alerts)
+
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000, debug=True, threaded=True)

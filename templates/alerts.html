@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Alerts Dashboard</title>
+
+    <!-- Google Fonts: Inter -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+
+    <style>
+        :root {
+            --bg-color: #f8f9fa;
+            --card-bg: #ffffff;
+            --text-primary: #2d3748;
+            --text-secondary: #718096;
+            --critical-bg: #fff5f5;
+            --critical-border: #fc8181;
+            --critical-text: #c53030;
+            --warning-bg: #fffaf0;
+            --warning-border: #fbd38d;
+            --warning-text: #c05621;
+        }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-primary);
+            margin: 0;
+            padding: 40px 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            min-height: 100vh;
+        }
+
+        .container {
+            width: 100%;
+            max-width: 1000px;
+        }
+
+        header {
+            margin-bottom: 40px;
+            text-align: center;
+        }
+
+        h1 {
+            font-weight: 700;
+            font-size: 2rem;
+            margin: 0;
+        }
+
+        .btn-back {
+            color: var(--text-secondary);
+            text-decoration: none;
+            font-weight: 500;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 20px;
+        }
+
+        .btn-back:hover {
+            color: var(--text-primary);
+        }
+
+        .alert-section {
+            margin-bottom: 40px;
+        }
+
+        .section-title {
+            font-size: 1.2rem;
+            font-weight: 600;
+            margin-bottom: 20px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .alert-card {
+            background: var(--card-bg);
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 16px;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+            border-left: 4px solid transparent;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .alert-card.critical {
+            border-left-color: var(--critical-border);
+            background-color: var(--critical-bg);
+        }
+
+        .alert-card.warning {
+            border-left-color: var(--warning-border);
+            background-color: var(--warning-bg);
+        }
+
+        .alert-content h3 {
+            margin: 0 0 4px 0;
+            font-size: 1rem;
+            font-weight: 600;
+        }
+
+        .alert-content p {
+            margin: 0;
+            font-size: 0.9rem;
+            color: var(--text-secondary);
+        }
+
+        .alert-card.critical .alert-content h3 {
+            color: var(--critical-text);
+        }
+
+        .alert-card.warning .alert-content h3 {
+            color: var(--warning-text);
+        }
+
+        .alert-time {
+            font-size: 0.85rem;
+            color: var(--text-secondary);
+            white-space: nowrap;
+            margin-left: 20px;
+        }
+
+        .empty-state {
+            text-align: center;
+            padding: 40px;
+            color: var(--text-secondary);
+            background: var(--card-bg);
+            border-radius: 8px;
+            border: 1px dashed #cbd5e0;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <a href="/" class="btn-back">&larr; Back to Dashboard</a>
+        <header>
+            <h1>System Alerts</h1>
+        </header>
+
+        <div class="alert-section">
+            <div class="section-title" style="color: #c53030;">
+                <span>🚨</span> Critical Errors
+            </div>
+            <div id="critical-alerts">
+                <!-- Alerts will be injected here -->
+            </div>
+        </div>
+
+        <div class="alert-section">
+            <div class="section-title" style="color: #c05621;">
+                <span>⚠️</span> Warnings
+            </div>
+            <div id="warning-alerts">
+                <!-- Alerts will be injected here -->
+            </div>
+        </div>
+    </div>
+
+    <script src="{{ url_for('static', filename='js/notifications.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/alerts.js') }}"></script>
+</body>
+
+</html>
